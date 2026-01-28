@@ -33,31 +33,56 @@ export class GeminiService {
 
   static async animateImage(base64Image: string, prompt: string, onProgress?: (msg: string) => void) {
     if (onProgress) {
-      onProgress("Processing cinematic sequences...");
+      onProgress("Starting video generation...");
     }
 
-    const response = await fetch("/.netlify/functions/animate-image", {
+    // Start the animation
+    const startResponse = await fetch("/.netlify/functions/animate-start", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ base64Image, prompt })
     });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || "Failed to animate image");
+    if (!startResponse.ok) {
+      const error = await startResponse.json();
+      throw new Error(error.error || "Failed to start animation");
     }
 
-    const data = await response.json();
+    const { operationName } = await startResponse.json();
 
-    // Convert base64 video to blob URL
-    const byteCharacters = atob(data.video.split(",")[1]);
-    const byteNumbers = new Array(byteCharacters.length);
-    for (let i = 0; i < byteCharacters.length; i++) {
-      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    // Poll for completion
+    while (true) {
+      if (onProgress) {
+        onProgress("Processing cinematic sequences...");
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 5000));
+
+      const statusResponse = await fetch("/.netlify/functions/animate-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ operationName })
+      });
+
+      if (!statusResponse.ok) {
+        const error = await statusResponse.json();
+        throw new Error(error.error || "Failed to check animation status");
+      }
+
+      const statusData = await statusResponse.json();
+
+      if (statusData.done) {
+        // Convert base64 video to blob URL
+        const byteCharacters = atob(statusData.video.split(",")[1]);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: "video/mp4" });
+
+        return URL.createObjectURL(blob);
+      }
     }
-    const byteArray = new Uint8Array(byteNumbers);
-    const blob = new Blob([byteArray], { type: "video/mp4" });
-
-    return URL.createObjectURL(blob);
   }
 }
