@@ -1,93 +1,63 @@
-
-import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
-
 export class GeminiService {
-  private static getClient() {
-    return new GoogleGenAI({ apiKey: process.env.API_KEY });
-  }
-
   static async generateKeyframe(prompt: string, styleSuffix: string) {
-    const ai = this.getClient();
-    const fullPrompt = `${prompt}. ${styleSuffix}`;
-    
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
-      contents: {
-        parts: [{ text: fullPrompt }]
-      },
-      config: {
-        imageConfig: {
-          aspectRatio: "16:9"
-        }
-      }
+    const response = await fetch("/.netlify/functions/generate-keyframe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt, styleSuffix })
     });
 
-    for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) {
-        return `data:image/png;base64,${part.inlineData.data}`;
-      }
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || "Failed to generate keyframe");
     }
-    throw new Error("No image data returned from Gemini");
+
+    const data = await response.json();
+    return data.image;
   }
 
   static async editImage(base64Image: string, editPrompt: string) {
-    const ai = this.getClient();
-    const base64Data = base64Image.split(',')[1];
-    
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
-      contents: {
-        parts: [
-          {
-            inlineData: {
-              data: base64Data,
-              mimeType: 'image/png'
-            }
-          },
-          { text: editPrompt }
-        ]
-      }
+    const response = await fetch("/.netlify/functions/edit-image", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ base64Image, editPrompt })
     });
 
-    for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) {
-        return `data:image/png;base64,${part.inlineData.data}`;
-      }
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || "Failed to edit image");
     }
-    throw new Error("No image data returned from image editing");
+
+    const data = await response.json();
+    return data.image;
   }
 
   static async animateImage(base64Image: string, prompt: string, onProgress?: (msg: string) => void) {
-    const ai = this.getClient();
-    const base64Data = base64Image.split(',')[1];
-
-    let operation = await ai.models.generateVideos({
-      model: 'veo-3.1-fast-generate-preview',
-      prompt: `Bring this image to life: ${prompt}. Subtle cinematic motion.`,
-      image: {
-        imageBytes: base64Data,
-        mimeType: 'image/png'
-      },
-      config: {
-        numberOfVideos: 1,
-        resolution: '720p',
-        aspectRatio: '16:9'
-      }
-    });
-
-    while (!operation.done) {
-      if (onProgress) {
-        onProgress("Processing cinematic sequences...");
-      }
-      await new Promise(resolve => setTimeout(resolve, 8000));
-      operation = await ai.operations.getVideosOperation({ operation: operation });
+    if (onProgress) {
+      onProgress("Processing cinematic sequences...");
     }
 
-    const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
-    if (!downloadLink) throw new Error("Video generation failed");
+    const response = await fetch("/.netlify/functions/animate-image", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ base64Image, prompt })
+    });
 
-    const response = await fetch(`${downloadLink}&key=${process.env.API_KEY}`);
-    const blob = await response.blob();
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || "Failed to animate image");
+    }
+
+    const data = await response.json();
+
+    // Convert base64 video to blob URL
+    const byteCharacters = atob(data.video.split(",")[1]);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], { type: "video/mp4" });
+
     return URL.createObjectURL(blob);
   }
 }
