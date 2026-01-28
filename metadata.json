@@ -1,0 +1,7 @@
+{
+  "name": "Cinematica: Book-to-Motion Studio",
+  "description": "Transform book excerpts into richly animated cinematography using Gemini 2.5 and Veo 3.1.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
